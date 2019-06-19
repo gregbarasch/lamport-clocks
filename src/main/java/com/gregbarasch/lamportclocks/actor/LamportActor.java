@@ -25,19 +25,22 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class LamportActor extends AbstractActor {
+public final class LamportActor extends AbstractActor {
 
     private static final Logger logger = Logger.getLogger(LamportActor.class);
 
+    // A reference to the akka cluster
     private final Cluster cluster = Cluster.get(getContext().getSystem());
-
+    // The list of messages that this actor must process, ordered by each LamportMessage's LogicalClock
     private final PriorityQueue<LamportMessage> messageQueue = new PriorityQueue<>();
+    // The local clock
     private final LogicalClock logicalClock = new LogicalClock();
-
-    private RequestDto currentRequest;
-    private HashSet<ActorSelection> needAcknowledgementSet;
-
+    // Whether or not we own the resource
     private boolean ownsResource = false;
+    // A reference to the request for the resource that this actor sent. null if there is no current request
+    private RequestDto currentRequest;
+    // A set of actors that has not acknowledged our request yet.
+    private HashSet<ActorSelection> needAcknowledgementSet;
 
     public static Props props() {
         return Props.create(LamportActor.class);
@@ -50,25 +53,30 @@ public class LamportActor extends AbstractActor {
                 .match(AckDto.class, this::onAckDto)
                 .match(ReleaseDto.class, this::onReleaseDto)
                 .match(ClusterEvent.MemberEvent.class, message -> {}) // ignored
+
                 .match(ClusterEvent.MemberUp.class, event -> {
                     logger.info("Member up: " + event.member());
                     final ActorSelection actor = getActorSelection(event.member());
+
                     if (needAcknowledgementSet != null) {
                         needAcknowledgementSet.add(actor);
                         final RequestDto request = new RequestDto(cluster.selfAddress(), logicalClock.clone());
                         actor.tell(request, getSelf());
                     }
                 })
+
                 .match(ClusterEvent.UnreachableMember.class, event -> {
                     logger.info("Member unreachable: " + event.member());
                     final ActorSelection actor = getActorSelection(event.member());
                     if (needAcknowledgementSet != null) needAcknowledgementSet.remove(actor);
                 })
+
                 .match(ClusterEvent.MemberRemoved.class, event -> {
                     logger.info("Member removed: " + event.member());
                     final ActorSelection actor = getActorSelection(event.member());
                     if (needAcknowledgementSet != null) needAcknowledgementSet.remove(actor);
                 })
+
                 // Hack to match bootstrapping coordinator
                 .match(StartLamportSystemTrigger.class, trigger -> {
                     logger.info("Actor received StartLamportSystemTrigger.");
@@ -79,6 +87,7 @@ public class LamportActor extends AbstractActor {
                         requestResource();
                     }
                 })
+
                 .matchAny(event -> logger.warn("Received " + event))
                 .build();
     }
@@ -210,7 +219,6 @@ public class LamportActor extends AbstractActor {
         // waiting for message from this sender
         final ActorSelection sender = getActorSelection(message.getSenderAddress());
         if (needAcknowledgementSet != null && needAcknowledgementSet.contains(sender)) {
-
             // message is newer than current request
             if (message.getTimestamp().compareTo(currentRequest.getTimestamp()) > 0) {
                 needAcknowledgementSet.remove(sender);
@@ -231,6 +239,7 @@ public class LamportActor extends AbstractActor {
                 && needAcknowledgementSet.isEmpty()
                 && !messageQueue.isEmpty()
                 && Objects.equals(messageQueue.peek().getSenderAddress(), cluster.selfAddress())) {
+
             acquireResource();
             try { Thread.sleep(500); } catch (InterruptedException ignore) {} // FIXME Ignoring.. unimportant at the moment
             releaseResource();
@@ -238,8 +247,9 @@ public class LamportActor extends AbstractActor {
     }
 
     private Set<ActorSelection> getActorSet() {
-        SortedSet<Member> members = cluster.state().members();
-        return JavaConverters.setAsJavaSet(members).stream()
+        final SortedSet<Member> members = cluster.state().members();
+        return JavaConverters.setAsJavaSet(members)
+                .stream()
                 .filter(member -> member.status() == MemberStatus.up())
                 .map(member -> getActorSelection(member.address()))
                 .collect(Collectors.toSet());

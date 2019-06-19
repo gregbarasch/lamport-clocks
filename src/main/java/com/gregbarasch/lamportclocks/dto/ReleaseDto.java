@@ -5,7 +5,7 @@ import com.gregbarasch.lamportclocks.model.LogicalClock;
 
 import java.io.Serializable;
 
-public class ReleaseDto extends LamportMessage implements Serializable {
+public final class ReleaseDto extends LamportMessage implements Serializable {
 
     private static final long serialVersionUID = 1L;
 

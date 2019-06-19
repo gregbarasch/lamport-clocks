@@ -16,11 +16,12 @@ public class App {
 
     private App() {
 
+        // Start system and magnagement/bootstrap modules
         final ActorSystem actorSystem = ActorSystem.create("lamport-clocks");
         AkkaManagement.get(actorSystem).start();
         ClusterBootstrap.get(actorSystem).start();
 
-        // start actor
+        // start single actor
         final ActorRef actor = actorSystem.actorOf(LamportActor.props(), "lamportActor");
         Cluster.get(actorSystem).registerOnMemberUp(() -> {
             logger.info("Cluster member is up!");
