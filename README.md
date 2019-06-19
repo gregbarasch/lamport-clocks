@@ -1,3 +1,6 @@
+# Info
+This is an implementation of Lamport clocks based on the article "Time, Clocks, and  the Ordering of Events in a  Distributed System" by Leslie Lamport utilizing Java, Akka, Docker, and Kubernetes.
+
 # Setup
 You must configure the akka-cluster.yml file as well as the Makefile to point to the correct remote cluster. Currently it is expected that we will be working with 3 nodes, but this should be easily configurable. 
 
